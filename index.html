@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>مربی هوشمند باشگاه</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;700;800&display=swap">
+<style>
+:root{--bg:#1b1f27;--card:#262c37;--ink:#eceae4;--mute:#9aa3b2;--plate:#4d86c4;--ok:#4caf7a;--bad:#e5534b;--line:#363e4c}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:Vazirmatn,Tahoma,sans-serif;line-height:1.7;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
+main{max-width:640px;margin:0 auto;padding:16px}
+h1{font-size:1.5rem;font-weight:800;margin:8px 0 2px}
+p.sub{color:var(--mute);margin:0 0 14px}
+nav{display:flex;gap:8px;margin-bottom:14px}
+nav button{flex:1;padding:10px;border:1px solid var(--line);background:transparent;color:var(--mute);border-radius:10px;font:inherit;font-weight:700}
+nav button.on{background:var(--plate);color:#fff;border-color:var(--plate)}
+.card{background:var(--card);border-radius:12px;padding:14px;margin-bottom:12px}
+label{display:block;margin:10px 0 4px;color:var(--mute);font-size:.9rem}
+select,input[type=text]{width:100%;padding:10px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink);font:inherit}
+button.main{width:100%;margin-top:14px;padding:12px;border:0;border-radius:10px;background:var(--plate);color:#fff;font:inherit;font-weight:800;font-size:1rem}
+button.ghost{padding:6px 10px;border:1px solid var(--plate);background:transparent;color:var(--plate);border-radius:8px;font:inherit;font-size:.85rem}
+.day h3{margin:0 0 6px;font-size:1.05rem}
+.ex{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 0;border-top:1px solid var(--line)}
+.ex small{color:var(--mute);display:block}
+.add{display:flex;gap:6px;margin-top:8px}
+.add input{flex:1}
+.hide{display:none}
+.stage{position:relative;background:#000;border-radius:12px;overflow:hidden;aspect-ratio:3/4}
+.stage video,.stage canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.hud{display:flex;gap:10px;margin-top:10px}
+.hud div{flex:1;background:var(--card);border-radius:10px;padding:8px;text-align:center}
+.hud b{display:block;font-size:1.6rem}
+#msg{margin-top:10px;padding:12px;border-radius:10px;background:var(--card);font-weight:700;min-height:48px}
+#msg.good{border-right:5px solid var(--ok)}#msg.warn{border-right:5px solid var(--bad)}
+.tip{color:var(--mute);font-size:.88rem}
+.note{font-size:.8rem;color:var(--mute);margin-top:16px}
+</style>
+</head>
+<body>
+<main>
+<h1>مربی هوشمند باشگاه</h1>
+<p class="sub">برنامه‌ی تمرینی شخصی و چک زنده‌ی فرم حرکت با دوربین</p>
+<nav><button id="t1" class="on">برنامه‌ی من</button><button id="t2">تمرین زنده</button></nav>
+
+<section id="p1">
+  <div class="card">
+    <label>هدف</label>
+    <select id="goal"><option value="mass">حجم‌گیری</option><option value="fat">کاهش وزن</option><option value="str">قدرت</option></select>
+    <label>سطح</label>
+    <select id="lvl"><option value="0">مبتدی</option><option value="1">متوسط</option><option value="2">پیشرفته</option></select>
+    <label>روزهای تمرین در هفته</label>
+    <select id="days"><option>3</option><option>4</option><option>5</option><option>6</option></select>
+    <button class="main" id="gen">ساخت برنامه</button>
+  </div>
+  <div id="plan"></div>
+</section>
+
+<section id="p2" class="hide">
+  <div class="card">
+    <label>حرکت</label>
+    <select id="exsel">
+      <option value="squat">اسکات</option><option value="legpress">پرس پا</option>
+      <option value="bench">پرس سینه</option><option value="lunge">لانج</option>
+    </select>
+    <p class="tip" id="cam-tip"></p>
+    <button class="main" id="start">شروع دوربین</button>
+  </div>
+  <div class="stage"><video id="v" playsinline muted></video><canvas id="c"></canvas></div>
+  <div class="hud"><div><b id="reps">0</b>تکرار</div><div><b id="good">0</b>تکرار درست</div><div><b id="ang">–</b>زاویه</div></div>
+  <div id="msg">آماده‌ای؟ گوشی رو طبق راهنما بذار و دوربین رو شروع کن.</div>
+  <button class="ghost" id="flip" style="margin-top:10px">چرخاندن دوربین</button>
+</section>
+
+<p class="note">این برنامه جایگزین پزشک یا مربی حضوری نیست. اگر درد یا مصدومیت داری، تمرین رو متوقف کن و با پزشک مشورت کن. دقت تشخیص به نور و زاویه‌ی دوربین بستگی دارد.</p>
+</main>
+
+<script type="module">
+import {PoseLandmarker,FilesetResolver} from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14";
+const $=id=>document.getElementById(id);
+
+/* ---------- Tabs ---------- */
+function tab(n){$("p1").classList.toggle("hide",n!=1);$("p2").classList.toggle("hide",n!=2);$("t1").classList.toggle("on",n==1);$("t2").classList.toggle("on",n==2);}
+$("t1").onclick=()=>{stop();tab(1)};$("t2").onclick=()=>tab(2);
+
+/* ---------- Planner ---------- */
+const CAM={"اسکات":"squat","پرس پا":"legpress","پرس سینه":"bench","لانج":"lunge"};
+const TPL=[
+ {t:"پا",ex:["اسکات","پرس پا","لانج","ساق پا"]},
+ {t:"سینه و پشت‌بازو",ex:["پرس سینه","پرس بالاسینه دمبل","فلای","پشت‌بازو سیم‌کش"]},
+ {t:"پشت و جلوبازو",ex:["لت پولداون","زیربغل سیم‌کش","جلوبازو دمبل","فیس پول"]},
+ {t:"پا و شانه",ex:["پرس پا","اسکات","پرس سرشانه","نشر از جانب"]},
+ {t:"سینه و شانه",ex:["پرس سینه","پرس سرشانه","نشر از جانب","شنا"]},
+ {t:"پشت و بازو",ex:["زیربغل سیم‌کش","لت پولداون","جلوبازو دمبل","پشت‌بازو سیم‌کش"]}
+];
+const SCHEME={mass:["۴","۸ تا ۱۲","۶۰ تا ۹۰ ثانیه"],str:["۵","۳ تا ۶","۲ تا ۳ دقیقه"],fat:["۳","۱۲ تا ۱۵","۳۰ تا ۴۵ ثانیه"]};
+const fa=n=>String(n).replace(/\d/g,d=>"۰۱۲۳۴۵۶۷۸۹"[d]);
+$("gen").onclick=()=>{
+  const g=$("goal").value,l=+$("lvl").value,d=+$("days").value;
+  let [s,r,rest]=SCHEME[g];
+  if(l==0)s=g=="str"?"۴":"۳"; if(l==2&&g!="str")s="۵";
+  const out=TPL.slice(0,d).map((x,i)=>`<div class="card day"><h3>روز ${fa(i+1)}: ${x.t}</h3>
+   ${x.ex.map(e=>row(e,s,r,rest)).join("")}
+   <div class="add"><input type="text" placeholder="حرکت دلخواه اضافه کن"><button class="ghost add-btn">افزودن</button></div></div>`).join("");
+  $("plan").innerHTML=out+`<p class="tip">بین ست‌ها ${rest} استراحت کن. وزنه‌ای انتخاب کن که ۲ تکرار آخر سخت باشه ولی فرمت خراب نشه.</p>`;
+  $("plan").dataset.row=`${s}|${r}|${rest}`;
+};
+function row(e,s,r,rest){const k=CAM[e];
+  return `<div class="ex"><div>${e}<small>${s} ست × ${r} تکرار</small></div>${k?`<button class="ghost live" data-k="${k}">چک زنده</button>`:""}</div>`;}
+$("plan").onclick=ev=>{
+  const b=ev.target;
+  if(b.classList.contains("live")){$("exsel").value=b.dataset.k;tab(2);setTip();}
+  if(b.classList.contains("add-btn")){
+    const inp=b.previousElementSibling,v=inp.value.trim();if(!v)return;
+    const [s,r,rest]=$("plan").dataset.row.split("|");
+    b.parentElement.insertAdjacentHTML("beforebegin",row(v,s,r,rest));inp.value="";
+  }
+};
+
+/* ---------- Exercises ---------- */
+// j: [a,b,c] joint indices (L side), R side = +1. down/up = angle thresholds
+const EX={
+ squat:{name:"اسکات",j:[23,25,27],down:105,up:160,lean:true,cam:"دوربین از کنار (نیم‌رخ)، هم‌ارتفاع کمر، با فاصله‌ی ۲ تا ۳ متر. کل بدن دیده بشه.",
+   check:m=>m>115?"عمق کم بود؛ پایین‌تر برو تا ران موازی زمین بشه.":null},
+ legpress:{name:"پرس پا",j:[23,25,27],down:100,up:155,cam:"دوربین از کنار، طوری که لگن، زانو و مچ پا دیده بشن.",
+   check:m=>m<65?"خیلی عمیق رفتی؛ لگن از صندلی جدا نشه.":m>115?"دامنه‌ی حرکت کم بود؛ کمی بیشتر زانو رو خم کن.":null,
+   top:a=>a>176?"زانوها رو کامل قفل نکن.":null},
+ bench:{name:"پرس سینه",j:[11,13,15],down:95,up:150,cam:"دوربین از کنار یا کمی بالای سر، طوری که شانه، آرنج و مچ دیده بشن.",
+   check:m=>m>110?"میله رو پایین‌تر بیار، نزدیک سینه.":null},
+ lunge:{name:"لانج",j:[23,25,27],down:105,up:160,lean:true,cam:"دوربین از کنار، با فاصله‌ی ۲ تا ۳ متر. کل بدن دیده بشه.",
+   check:m=>m>115?"پایین‌تر برو تا زانوی جلو حدود ۹۰ درجه بشه.":null}
+};
+function setTip(){$("cam-tip").textContent="جای گوشی: "+EX[$("exsel").value].cam;}
+$("exsel").onchange=()=>{setTip();reset();};setTip();
+
+/* ---------- Pose ---------- */
+let pose,stream,running=false,facing="environment",last=-1;
+let reps=0,good=0,phase="wait",minA=999,maxA=0,sm=null;
+const v=$("v"),c=$("c"),ctx=c.getContext("2d");
+const PAIRS=[[11,12],[11,13],[13,15],[12,14],[14,16],[11,23],[12,24],[23,24],[23,25],[25,27],[24,26],[26,28]];
+
+function say(t,ok){const m=$("msg");m.textContent=t;m.className=ok?"good":"warn";}
+function reset(){reps=0;good=0;phase="wait";minA=999;maxA=0;sm=null;$("reps").textContent=0;$("good").textContent=0;$("ang").textContent="–";}
+function ang(a,b,cc){const r=Math.atan2(cc.y-b.y,cc.x-b.x)-Math.atan2(a.y-b.y,a.x-b.x);let d=Math.abs(r*180/Math.PI);return d>180?360-d:d;}
+
+async function start(){
+  stop();reset();
+  say("در حال آماده‌سازی… چند ثانیه صبر کن.",true);
+  try{
+    if(!pose){
+      const fs=await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm");
+      pose=await PoseLandmarker.createFromOptions(fs,{baseOptions:{modelAssetPath:"https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task",delegate:"GPU"},runningMode:"VIDEO",numPoses:1});
+    }
+    stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:facing,width:{ideal:720},height:{ideal:960}},audio:false});
+    v.srcObject=stream;await v.play();
+    c.width=v.videoWidth;c.height=v.videoHeight;
+    v.style.transform=c.style.transform=facing=="user"?"scaleX(-1)":"none";
+    running=true;say("بدن کامل رو توی تصویر بیار و حرکت رو شروع کن.",true);loop();
+  }catch(e){say("دسترسی به دوربین یا بارگذاری مدل ممکن نشد. اجازه‌ی دوربین رو بررسی کن و اینترنت داشته باش.",false);}
+}
+function stop(){running=false;if(stream){stream.getTracks().forEach(t=>t.stop());stream=null;}}
+$("start").onclick=start;
+$("flip").onclick=()=>{facing=facing=="user"?"environment":"user";if(running)start();};
+
+function loop(){
+  if(!running)return;
+  if(v.currentTime!==last){last=v.currentTime;
+    const r=pose.detectForVideo(v,performance.now());
+    if(r.landmarks&&r.landmarks[0])handle(r.landmarks[0]);else say("بدنت دیده نمی‌شه؛ کمی عقب‌تر برو.",false);
+  }
+  requestAnimationFrame(loop);
+}
+function handle(p){
+  const e=EX[$("exsel").value],W=c.width,H=c.height;
+  // draw skeleton
+  ctx.clearRect(0,0,W,H);ctx.strokeStyle="#4d86c4";ctx.lineWidth=4;
+  PAIRS.forEach(([a,b])=>{ctx.beginPath();ctx.moveTo(p[a].x*W,p[a].y*H);ctx.lineTo(p[b].x*W,p[b].y*H);ctx.stroke();});
+  // pick the side better seen
+  const vis=o=>[11,23,25,27].reduce((s,i)=>s+(p[i+o].visibility||0),0);
+  const o=vis(1)>vis(0)?1:0;
+  const [a,b,cc]=e.j.map(i=>p[i+o]);
+  if(Math.min(a.visibility,b.visibility,cc.visibility)<0.4){say("مفصل‌ها واضح دیده نمی‌شن؛ نور و زاویه‌ی دوربین رو درست کن.",false);return;}
+  const px=q=>({x:q.x*W,y:q.y*H});
+  const raw=ang(px(a),px(b),px(cc));sm=sm==null?raw:sm*0.6+raw*0.4;
+  $("ang").textContent=Math.round(sm)+"°";
+  ctx.fillStyle="#4caf7a";[a,b,cc].forEach(q=>{ctx.beginPath();ctx.arc(q.x*W,q.y*H,8,0,7);ctx.fill();});
+  // live lean check
+  if(e.lean&&phase=="down"){
+    const s=p[11+o],h=p[23+o],lean=Math.atan2(Math.abs(s.x-h.x)*W,Math.abs(s.y-h.y)*H)*180/Math.PI;
+    if(lean>55)say("بالاتنه زیادی خم شده؛ سینه رو بالا و کمر رو صاف نگه دار.",false);
+  }
+  // rep state machine
+  if(phase=="wait"&&sm>e.up){phase="up";maxA=sm;say("خوبه، شروع کن.",true);}
+  else if(phase=="up"){maxA=Math.max(maxA,sm);if(sm<e.down+25&&sm<maxA-15){phase="down";minA=sm;}}
+  else if(phase=="down"){
+    minA=Math.min(minA,sm);
+    if(sm>e.up){
+      reps++;const issue=e.check(minA)||(e.top&&e.top(sm));
+      if(!issue)good++;
+      say(issue||"تکرار عالی بود!",!issue);
+      $("reps").textContent=reps;$("good").textContent=good;
+      phase="up";maxA=sm;minA=999;
+    }
+  }
+}
+</script>
+</body>
+</html>
